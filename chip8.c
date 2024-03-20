@@ -245,6 +245,10 @@ void handle_input(chip8_t *chip8){
 			case 0x02:
 				printf("Call subroutine at NNN (0x%04X)\n", chip8->inst.NNN);
 				break;
+			case 0x03:
+				printf("Check if V%X (0x%02X) == NN (0x%02X), skip next instruction if true\n",
+						chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.NN);
+				break;
 			case 0x06:
 				printf("Set register v%X = NN (0x%02X)\n", chip8->inst.X, chip8->inst.NN);
 				break;
@@ -295,6 +299,9 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 		case 0x02:
 			*chip8->stack_ptr++ = chip8->PC;
 			chip8->PC = chip8->inst.NNN;
+			break;
+		case 0x03:
+			chip8->PC += 2;
 			break;
 		case 0x06:
 			chip8->V[chip8->inst.X] = chip8->inst.NN;
