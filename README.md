@@ -1,1 +1,1 @@
-# chip_project
+# Chip interpretor project
