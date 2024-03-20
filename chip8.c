@@ -341,7 +341,6 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 	}
 }
 
-// Main squeeze
 int main(int argc, char **argv){
 	// Default usage message for args
 	if(argc < 2){
