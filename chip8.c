@@ -354,6 +354,10 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 						chip8->V[0xF] = 1;
 					chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
 					break;
+				case 6:
+					chip8->V[0xF] = chip8->V[chip8->inst.X] & 1;
+					chip8->V[chip8->inst.X] >>= 1;
+					break;
 				default:
 					break;
 			}
