@@ -263,9 +263,71 @@ void handle_input(chip8_t *chip8){
 			case 0x07:
 				printf("Set register v%X (0x%02X) += NN (0x%02X). Result 0x%02X\n", 
 						chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.NN, chip8->V[chip8->inst.X] + chip8->inst.NN);
+			case 0x08:
+				switch (chip8->inst.N){
+					case 0:
+						printf("Set register v%X = V%X (0x%02X)\n", 
+								chip8->inst.X, chip8->inst.Y, chip8->V[chip8->inst.Y]);
+						break;
+					case 1:
+						printf("Set register v%X (0x%02X) |= V%X (0x%02X). Result : 0x%02X\n", 
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
+								chip8->V[chip8->inst.X] | chip8->V[chip8->inst.Y]);
+						break;
+					case 2:
+						printf("Set register v%X (0x%02X) &= V%X (0x%02X). Result : 0x%02X\n", 
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
+								chip8->V[chip8->inst.X] & chip8->V[chip8->inst.Y]);
+						break;
+					case 3:
+						printf("Set register v%X (0x%02X) ^= V%X (0x%02X). Result : 0x%02X\n", 
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
+								chip8->V[chip8->inst.X] ^ chip8->V[chip8->inst.Y]);
+						break;
+					case 4:
+						printf("Set register v%X (0x%02X) += V%X (0x%02X), VF = 1 if carry. Result : 0x%02X, VF = %X\n", 
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
+								chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y],
+								((uint16_t)(chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y]) > 255));
+						break;
+					case 5:
+						printf("Set register v%X (0x%02X) -= V%X (0x%02X), VF = 1 if no borrow. Result : 0x%02X, VF = %X\n", 
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
+								chip8->V[chip8->inst.X] - chip8->V[chip8->inst.Y],
+								(chip8->V[chip8->inst.Y] <= chip8->V[chip8->inst.X]));
+						break;
+					case 6:
+						printf("Set register v%X (0x%02X) >>= 1, VF = shifted off bit (%X). Result : 0x%02X, VF = %X\n", 
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->V[chip8->inst.X] & 1,
+								chip8->V[chip8->inst.X] >> 1);
+						break;
+					case 7:
+						printf("Set register v%X = V%X (0x%02X) - V%X (0x%02X), VF = 1 if no borrow. Result : 0x%02X, VF = %X\n", 
+								chip8->inst.X, chip8->inst.Y, chip8->V[chip8->inst.Y], 
+								chip8->inst.X, chip8->V[chip8->inst.X],
+								chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X],
+								(chip8->V[chip8->inst.X] <= chip8->V[chip8->inst.Y]));
+						break;
+					case 0xE:
+						printf("Set register v%X (0x%02X) <<= 1, VF = shifted off bit (%X). Result : 0x%02X, VF = %X\n", 
+								chip8->inst.X, chip8->V[chip8->inst.X], (chip8->V[chip8->inst.X] & 0x80) >> 7,
+								chip8->V[chip8->inst.X] << 1);
+						break;
+					default:
+						printf("Unimplemented Opcode.\n");
+						break;
+				}
+				break;
+			case 0x09:
+				printf("Check if V%X (0x%02X) != V%X (0x%02X), skip next instruction if true\n",
+						chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y]);
 				break;
 			case 0x0A:
 				printf("Set I to NNN (0x%04X)\n", chip8->inst.NNN);
+				break;
+			case 0x0B:
+				printf("Set PC to V0 (0x%02X) + NNN (0x%04X). Result PC = 0x%04X\n", 
+						chip8->V[0], chip8->inst.NNN, chip8->V[0] + chip8->inst.NNN);
 				break;
 			case 0x0D:
 				printf("Draw N (%u) height sprite at coords V%X (0x%02X), V%X (0x%02X) "
@@ -350,7 +412,7 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					chip8->V[chip8->inst.X] += chip8->V[chip8->inst.Y];
 					break;
 				case 5:
-					if(chip8->V[chip8->inst.X] < chip8->V[chip8->inst.Y])
+					if(chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y])
 						chip8->V[0xF] = 1;
 					chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
 					break;
@@ -358,12 +420,28 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					chip8->V[0xF] = chip8->V[chip8->inst.X] & 1;
 					chip8->V[chip8->inst.X] >>= 1;
 					break;
+				case 7:
+					if(chip8->V[chip8->inst.X] <= chip8->V[chip8->inst.Y])
+						chip8->V[0xF] = 1;
+					chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X];
+					break;
+				case 0xE:
+					chip8->V[0xF] = (chip8->V[chip8->inst.X] & 0x80) >> 7;
+					chip8->V[chip8->inst.X] <<= 1;
+					break;
 				default:
 					break;
 			}
 			break;
+		case 0x09:
+			if(chip8->V[chip8->inst.X] != chip8->V[chip8->inst.Y])
+				chip8->PC += 2;
+			break;
 		case 0x0A:
 			chip8->I = chip8->inst.NNN;
+			break;
+		case 0x0B:
+			chip8->PC = chip8->V[0] + chip8->inst.NNN;
 			break;
 		case 0x0D: {
 			uint8_t X_coord = chip8->V[chip8->inst.X] % config.window_width;
