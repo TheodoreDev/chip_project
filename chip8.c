@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 
 #include "SDL.h"
 
@@ -329,6 +330,9 @@ void handle_input(chip8_t *chip8){
 				printf("Set PC to V0 (0x%02X) + NNN (0x%04X). Result PC = 0x%04X\n", 
 						chip8->V[0], chip8->inst.NNN, chip8->V[0] + chip8->inst.NNN);
 				break;
+			case 0x0C:
+				printf("Set V%X = rand() %% 256 & NN (0x%02X)\n", chip8->V[chip8->inst.X], chip8->inst.NN);
+				break;
 			case 0x0D:
 				printf("Draw N (%u) height sprite at coords V%X (0x%02X), V%X (0x%02X) "
 						"from memory location I (0x%04X). Set VF = 1 if any pixels are turned off.\n",
@@ -443,6 +447,9 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 		case 0x0B:
 			chip8->PC = chip8->V[0] + chip8->inst.NNN;
 			break;
+		case 0x0C:
+			chip8->V[chip8->inst.X] = (rand() % 256) & chip8->inst.NN;
+			break;
 		case 0x0D: {
 			uint8_t X_coord = chip8->V[chip8->inst.X] % config.window_width;
 			uint8_t Y_coord = chip8->V[chip8->inst.Y] % config.window_height;
@@ -489,6 +496,9 @@ int main(int argc, char **argv){
 
 	// Initial screen clear
 	clear_screen(sdl, config);
+
+	// Seed the random number generator
+	srand(time(NULL));
 
 	// Initialize CHIP8 machine
 	chip8_t chip8 = {0};
