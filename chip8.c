@@ -413,6 +413,14 @@ void handle_input(chip8_t *chip8){
 					case 0x18:
 						printf("Set sound timer value = V%X (0x%02X)\n", chip8->inst.X, chip8->V[chip8->inst.X]);
 						break;
+					case 0x29:
+						printf("Set I to sprite location in memory for character in V%X (0x%02X). Result(VX*5) = (0x%02X)\n",
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->V[chip8->inst.X] * 5);
+						break;
+					case 0x33:
+						printf("Store BCD representation of V%X (0x%02X) at memory form I (0x%04X)\n",
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);
+						break;
 					default:
 						break;
 				}
@@ -588,6 +596,24 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					break;
 				case 0x18:
 					chip8->sound_timer = chip8->V[chip8->inst.X];
+					break;
+				case 0x29:
+					chip8->I = chip8->V[chip8->inst.X] * 5;
+					break;
+				case 0x33: {
+					uint8_t bcd = chip8->V[chip8->inst.X];
+					chip8->ram[chip8->I+2] = bcd % 10;
+					bcd /= 10;
+					chip8->ram[chip8->I+1] = bcd % 10;
+					bcd /= 10;
+					chip8->ram[chip8->I] = bcd;
+					break;
+				}
+				case 0x55:
+					
+					break;
+				case 0x65:
+					
 					break;
 				default:
 					break;
