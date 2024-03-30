@@ -19,6 +19,7 @@ typedef struct {
 	uint32_t bg_color;
 	uint32_t scale_factor;
 	bool pixel_outlines;
+	uint32_t insts_per_second;
 } config_t;
 
 typedef enum {
@@ -88,6 +89,7 @@ bool set_config_from_args(config_t *config, const int argc, char **argv){
 		.bg_color = 0x00000000,
 		.scale_factor = 20,
 		.pixel_outlines = false,
+		.insts_per_second = 500,
 	};
 	for(int i = 1; i < argc; i++){
 		(void)argv[i];
@@ -195,6 +197,14 @@ void update_screen(const sdl_t sdl,const config_t config, chip8_t *chip8){
 		}
 	}
 	SDL_RenderPresent(sdl.renderer);
+}
+
+void update_timers(chip8_t *chip8){
+	if(chip8->delay_timer > 0)
+		chip8->delay_timer--;
+	if(chip8->sound_timer > 0){
+		chip8->sound_timer--;
+	}	
 }
 
 // Keypad:	CHIP8	 AZERTY
@@ -421,6 +431,14 @@ void handle_input(chip8_t *chip8){
 						printf("Store BCD representation of V%X (0x%02X) at memory form I (0x%04X)\n",
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);
 						break;
+					case 0x55:
+						printf("Register dumb V0-V%X (0x%02X) inclusive at memory form I (0x%04X)\n",
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);
+						break;
+					case 0x65:
+						printf("Register load V0-V%X (0x%02X) inclusive from memory form I (0x%04X)\n",
+								chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);
+						break;
 					default:
 						break;
 				}
@@ -503,8 +521,7 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					chip8->V[chip8->inst.X] += chip8->V[chip8->inst.Y];
 					break;
 				case 5:
-					if(chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y])
-						chip8->V[0xF] = 1;
+					chip8->V[0xF] = (chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y]);
 					chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
 					break;
 				case 6:
@@ -512,8 +529,7 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					chip8->V[chip8->inst.X] >>= 1;
 					break;
 				case 7:
-					if(chip8->V[chip8->inst.X] <= chip8->V[chip8->inst.Y])
-						chip8->V[0xF] = 1;
+					chip8->V[0xF] = (chip8->V[chip8->inst.X] <= chip8->V[chip8->inst.Y]);
 					chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X];
 					break;
 				case 0xE:
@@ -610,10 +626,12 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					break;
 				}
 				case 0x55:
-					
+					for(uint8_t i = 0; i <= chip8->inst.X; i++)
+						chip8->ram[chip8->I + i] = chip8->V[i];
 					break;
 				case 0x65:
-					
+					for(uint8_t i = 0; i <= chip8->inst.X; i++)
+						chip8->V[i] = chip8->ram[chip8->I + i];
 					break;
 				default:
 					break;
@@ -655,11 +673,19 @@ int main(int argc, char **argv){
 		handle_input(&chip8);
 		if(chip8.state == PAUSED) continue;
 
-		emulate_instruction(&chip8, config);
+		const uint64_t start_frame_time = SDL_GetPerformanceCounter();
 
-		SDL_Delay(16);
+		for(uint32_t i = 0; i < config.insts_per_second/60; i++)
+			emulate_instruction(&chip8, config);
+
+		const uint64_t end_frame_time = SDL_GetPerformanceCounter();
+
+		const double time_elapsed = (double)((end_frame_time - start_frame_time) * 1000) / SDL_GetPerformanceFrequency();
+
+		SDL_Delay(16.67f > time_elapsed ? 16.67f - time_elapsed : 0);
 
 		update_screen(sdl, config, &chip8);
+		update_timers(&chip8);
 	}
 
 	// Final cleanup
