@@ -10,6 +10,8 @@
 typedef struct {
 	SDL_Window *window;
 	SDL_Renderer *renderer;
+	SDL_AudioSpec want, have;
+	SDL_AudioDeviceID dev;
 } sdl_t;
 
 typedef struct {
@@ -20,6 +22,9 @@ typedef struct {
 	uint32_t scale_factor;
 	bool pixel_outlines;
 	uint32_t insts_per_second;
+	uint32_t square_wave_freq;
+	uint32_t audio_sample_rate;
+	int16_t volume;
 } config_t;
 
 typedef enum {
@@ -53,8 +58,21 @@ typedef struct {
 	instruction_t inst;
 } chip8_t;
 
+void audio_callback(void *userdata, uint8_t *stream, int len){
+	config_t *config = (config_t *)userdata;
+	int16_t *audio_data = (int16_t *)stream;
+	static uint32_t running_sample_index = 0;
+	const int32_t square_wave_period = config->audio_sample_rate / config->square_wave_freq;
+	const int32_t half_square_wave_period = square_wave_period / 2;
+
+	for(int i = 0; i < len/2; i++){
+		audio_data[i] = ((running_sample_index++ / half_square_wave_period) % 2) ? 
+						config->volume : -config->volume;
+	}
+}
+
 // Initialize SDL
-bool init_sdl(sdl_t *sdl, const config_t config){
+bool init_sdl(sdl_t *sdl, config_t *config){
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0){
 		SDL_Log("Could not initialize SDL subsystems ! %s\n", SDL_GetError());
 		return false; // Error
@@ -64,8 +82,8 @@ bool init_sdl(sdl_t *sdl, const config_t config){
 		"CHIP8 Emulator", 
 		SDL_WINDOWPOS_CENTERED, 
 		SDL_WINDOWPOS_CENTERED, 
-		config.window_width * config.scale_factor, 
-		config.window_height * config.scale_factor, 
+		config->window_width * config->scale_factor, 
+		config->window_height * config->scale_factor, 
 		0);
 	if(!sdl->window){
 		SDL_Log("Could not create window %s\n", SDL_GetError());
@@ -75,6 +93,25 @@ bool init_sdl(sdl_t *sdl, const config_t config){
 	sdl->renderer = SDL_CreateRenderer(sdl->window, -1, SDL_RENDERER_ACCELERATED);
 	if(!sdl->renderer){
 		SDL_Log("Could not create renderer %s\n", SDL_GetError());
+		return false;
+	}
+
+	sdl->want = (SDL_AudioSpec){
+		.freq = 44100,
+		.format = AUDIO_S16LSB,
+		.channels = 1,
+		.samples = 512,
+		.callback = audio_callback,
+		.userdata = config,
+	};
+
+	sdl->dev = SDL_OpenAudioDevice(NULL, 0, &sdl->want, &sdl->have, 0);
+	if(sdl->dev == 0){
+		SDL_Log("Could not get an audio device %s\n", SDL_GetError());
+		return false;
+	}
+	if((sdl->want.format != sdl->have.format) || (sdl->want.channels != sdl->have.channels)){
+		SDL_Log("Could not get desired audio spec\n");
 		return false;
 	}
 
@@ -89,7 +126,10 @@ bool set_config_from_args(config_t *config, const int argc, char **argv){
 		.bg_color = 0x00000000,
 		.scale_factor = 20,
 		.pixel_outlines = false,
-		.insts_per_second = 500,
+		.insts_per_second = 700,
+		.square_wave_freq = 440,
+		.audio_sample_rate = 44100,
+		.volume = 3000,
 	};
 	for(int i = 1; i < argc; i++){
 		(void)argv[i];
@@ -152,6 +192,7 @@ bool init_chip8(chip8_t *chip8, const char rom_name[]){
 void final_cleanup(const sdl_t sdl){
 	SDL_DestroyRenderer(sdl.renderer);
 	SDL_DestroyWindow(sdl.window);
+	SDL_CloseAudioDevice(sdl.dev);
 	SDL_Quit(); // Shutdown SDL subsystems
 }
 
@@ -199,12 +240,15 @@ void update_screen(const sdl_t sdl,const config_t config, chip8_t *chip8){
 	SDL_RenderPresent(sdl.renderer);
 }
 
-void update_timers(chip8_t *chip8){
+void update_timers(const sdl_t sdl, chip8_t *chip8){
 	if(chip8->delay_timer > 0)
 		chip8->delay_timer--;
 	if(chip8->sound_timer > 0){
 		chip8->sound_timer--;
-	}	
+		SDL_PauseAudioDevice(sdl.dev, 0);
+	} else{
+		SDL_PauseAudioDevice(sdl.dev, 1);
+	}
 }
 
 // Keypad:	CHIP8	 AZERTY
@@ -655,7 +699,7 @@ int main(int argc, char **argv){
 
 	// Initialize SDL
 	sdl_t sdl = {0};
-	if(!init_sdl(&sdl, config)) exit(EXIT_FAILURE);
+	if(!init_sdl(&sdl, &config)) exit(EXIT_FAILURE);
 
 	// Initial screen clear
 	clear_screen(sdl, config);
@@ -685,7 +729,7 @@ int main(int argc, char **argv){
 		SDL_Delay(16.67f > time_elapsed ? 16.67f - time_elapsed : 0);
 
 		update_screen(sdl, config, &chip8);
-		update_timers(&chip8);
+		update_timers(sdl, &chip8);
 	}
 
 	// Final cleanup
