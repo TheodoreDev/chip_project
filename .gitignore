@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 
 chip8.exe
+start_emulator.bat

@@ -171,7 +171,8 @@ bool init_chip8(chip8_t *chip8, const char rom_name[]){
 	const size_t max_size = sizeof chip8->ram - entry_point;
 	rewind(rom);
 	if(rom_size > max_size){
-		SDL_Log("Rom file %s is too big !\n", rom_name);
+		SDL_Log("Rom file %s is too big ! Rom size: %lu, Max size: %lu\n", 
+				rom_name, (long unsigned)rom_size, (long unsigned)max_size);
 		return false;
 	}
 
