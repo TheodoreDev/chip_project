@@ -25,6 +25,7 @@ typedef struct {
 	uint32_t square_wave_freq;
 	uint32_t audio_sample_rate;
 	int16_t volume;
+	float color_lerp_rate;
 } config_t;
 
 typedef enum {
@@ -38,6 +39,7 @@ typedef struct {
 	uint16_t NNN;
 	uint8_t NN;
 	uint8_t N;
+	uint8_t N2;
 	uint8_t X;
 	uint8_t Y;
 } instruction_t;
@@ -46,6 +48,8 @@ typedef struct {
 	emulator_state_t state;
 	uint8_t ram[4096];
 	bool display[64*32];
+	char Destination[8192];
+	uint32_t pixel_color[64*32];
 	uint16_t stack[12];
 	uint16_t *stack_ptr;
 	uint8_t V[16];
@@ -57,6 +61,25 @@ typedef struct {
 	const char *rom_name;
 	instruction_t inst;
 } chip8_t;
+
+uint32_t color_lerp(const uint32_t start_color, const uint32_t end_color, float t){
+	const uint8_t s_r = (start_color >> 24) & 0xFF;
+	const uint8_t s_g = (start_color >> 16) & 0xFF;
+	const uint8_t s_b = (start_color >> 8) & 0xFF;
+	const uint8_t s_a = (start_color >> 0) & 0xFF;
+
+	const uint8_t e_r = (end_color >> 24) & 0xFF;
+	const uint8_t e_g = (end_color >> 16) & 0xFF;
+	const uint8_t e_b = (end_color >> 8) & 0xFF;
+	const uint8_t e_a = (end_color >> 0) & 0xFF;
+
+	const uint8_t ret_r = ((1 - t)*s_r) + (t*e_r);
+	const uint8_t ret_g = ((1 - t)*s_g) + (t*e_g);
+	const uint8_t ret_b = ((1 - t)*s_b) + (t*e_b);
+	const uint8_t ret_a = ((1 - t)*s_a) + (t*e_a);
+
+	return (ret_r << 24) | (ret_g << 16) | (ret_b << 8) | ret_a;
+}
 
 void audio_callback(void *userdata, uint8_t *stream, int len){
 	config_t *config = (config_t *)userdata;
@@ -130,14 +153,19 @@ bool set_config_from_args(config_t *config, const int argc, char **argv){
 		.square_wave_freq = 440,
 		.audio_sample_rate = 44100,
 		.volume = 3000,
+		.color_lerp_rate = 0.7,
 	};
 	for(int i = 1; i < argc; i++){
 		(void)argv[i];
+		if (strncmp(argv[i], "--scale-factor", strlen("--scale-factor")) == 0){
+			i++;
+			config->scale_factor = (uint32_t)strtol(argv[i], NULL, 10);
+		}
 	}
 	return true;
 }
 
-bool init_chip8(chip8_t *chip8, const char rom_name[]){
+bool init_chip8(chip8_t *chip8, const config_t config, const char rom_name[]){
 	const uint32_t entry_point = 0x200;
 	const uint8_t font[] = {
 		0xF0, 0x90, 0x90, 0x90, 0xF0,  // 0
@@ -186,6 +214,7 @@ bool init_chip8(chip8_t *chip8, const char rom_name[]){
 	chip8->PC = entry_point;
 	chip8->rom_name = rom_name;
 	chip8->stack_ptr = &chip8->stack[0];
+	memset(&chip8->pixel_color[0], config.bg_color, sizeof chip8->pixel_color);
 
 	return true;
 }
@@ -215,17 +244,20 @@ void update_screen(const sdl_t sdl,const config_t config, chip8_t *chip8){
 	const uint32_t bg_b = (config.bg_color >> 8) & 0xFF;
 	const uint32_t bg_a = (config.bg_color >> 0) & 0xFF;
 
-	const uint32_t fg_r = (config.fg_color >> 24) & 0xFF;
-	const uint32_t fg_g = (config.fg_color >> 16) & 0xFF;
-	const uint32_t fg_b = (config.fg_color >> 8) & 0xFF;
-	const uint32_t fg_a = (config.fg_color >> 0) & 0xFF;
-
 	for(uint32_t i = 0; i < sizeof chip8->display; i++){
 		rect.x = (i % config.window_width) * config.scale_factor;
 		rect.y = (i / config.window_width) * config.scale_factor;
 
 		if(chip8->display[i]){
-			SDL_SetRenderDrawColor(sdl.renderer, fg_r, fg_g, fg_b, fg_a);
+			if(chip8->pixel_color[i] != config.fg_color){
+				chip8->pixel_color[i] = color_lerp(chip8->pixel_color[i], config.fg_color, config.color_lerp_rate);
+			}
+			const uint32_t r = (chip8->pixel_color[i] >> 24) & 0xFF;
+			const uint32_t g = (chip8->pixel_color[i] >> 16) & 0xFF;
+			const uint32_t b = (chip8->pixel_color[i] >> 8) & 0xFF;
+			const uint32_t a = (chip8->pixel_color[i] >> 0) & 0xFF;
+
+			SDL_SetRenderDrawColor(sdl.renderer, r, g, b, a);
 			SDL_RenderFillRect(sdl.renderer, &rect);
 
 			if(config.pixel_outlines){
@@ -234,7 +266,15 @@ void update_screen(const sdl_t sdl,const config_t config, chip8_t *chip8){
 			}
 
 		} else{
-			SDL_SetRenderDrawColor(sdl.renderer, bg_r, bg_g, bg_b, bg_a);
+			if(chip8->pixel_color[i] != config.bg_color){
+				chip8->pixel_color[i] = color_lerp(chip8->pixel_color[i], config.bg_color, config.color_lerp_rate);
+			}
+			const uint32_t r = (chip8->pixel_color[i] >> 24) & 0xFF;
+			const uint32_t g = (chip8->pixel_color[i] >> 16) & 0xFF;
+			const uint32_t b = (chip8->pixel_color[i] >> 8) & 0xFF;
+			const uint32_t a = (chip8->pixel_color[i] >> 0) & 0xFF;
+
+			SDL_SetRenderDrawColor(sdl.renderer, r, g, b, a);
 			SDL_RenderFillRect(sdl.renderer, &rect);
 		}
 	}
@@ -257,16 +297,16 @@ void update_timers(const sdl_t sdl, chip8_t *chip8){
 //			456D	 AZER
 //			789E	 QSDF
 //			A0BF	 WXCV
-void handle_input(chip8_t *chip8){
+void handle_input(chip8_t *chip8, config_t *config){
 	SDL_Event event;
 	while (SDL_PollEvent(&event)){
 		switch (event.type){
 			case SDL_QUIT:
 				chip8->state = QUIT;
-				return;
+				break;
 			case SDL_KEYDOWN:
 				switch (event.key.keysym.sym){
-					case SDLK_p:
+					case SDLK_SPACE:
 						if(chip8->state == RUNNING){
 							chip8->state = PAUSED;
 							puts("==== PAUSED ====");
@@ -274,7 +314,26 @@ void handle_input(chip8_t *chip8){
 							chip8->state = RUNNING;
 							puts("==== RUNNING ====");
 						}
-						return;
+						break;
+					case SDLK_EQUALS:
+						init_chip8(chip8, *config, chip8->rom_name);
+						break;
+					case SDLK_p:
+						if(config->color_lerp_rate < 1.0)
+							config->color_lerp_rate += 0.1;
+						break;
+					case SDLK_m:
+						if(config->color_lerp_rate > 0.1)
+							config->color_lerp_rate -= 0.1;
+						break;
+					case SDLK_o:
+						if(config->volume < INT16_MAX)
+							config->volume += 500;
+						break;
+					case SDLK_l:
+						if(config->volume > 0)
+							config->volume -= 500;
+						break;
 					case SDLK_1: chip8->keypad[0x1] = true; break;
 					case SDLK_2: chip8->keypad[0x2] = true; break;
 					case SDLK_3: chip8->keypad[0x3] = true; break;
@@ -338,7 +397,9 @@ void handle_input(chip8_t *chip8){
 					printf("Clear screen\n");
 				} else if(chip8->inst.NN == 0xEE){
 					printf("Return from subroutine to adress 0x%04X\n", *(chip8->stack_ptr - 1));
-				}else {
+				} else if(chip8->inst.N2 == 0x0C0){
+					printf("Scroll down the whole screen of %u \n", chip8->inst.N);
+				} else {
 					printf("Unimplemented Opcode.\n");
 				}
 				break;
@@ -361,58 +422,58 @@ void handle_input(chip8_t *chip8){
 						chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y]);
 				break;
 			case 0x06:
-				printf("Set register v%X = NN (0x%02X)\n", chip8->inst.X, chip8->inst.NN);
+				printf("Set register V%X = NN (0x%02X)\n", chip8->inst.X, chip8->inst.NN);
 				break;
 			case 0x07:
-				printf("Set register v%X (0x%02X) += NN (0x%02X). Result 0x%02X\n", 
+				printf("Set register V%X (0x%02X) += NN (0x%02X). Result 0x%02X\n", 
 						chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.NN, chip8->V[chip8->inst.X] + chip8->inst.NN);
 			case 0x08:
 				switch (chip8->inst.N){
 					case 0:
-						printf("Set register v%X = V%X (0x%02X)\n", 
+						printf("Set register V%X = V%X (0x%02X)\n", 
 								chip8->inst.X, chip8->inst.Y, chip8->V[chip8->inst.Y]);
 						break;
 					case 1:
-						printf("Set register v%X (0x%02X) |= V%X (0x%02X). Result : 0x%02X\n", 
+						printf("Set register V%X (0x%02X) |= V%X (0x%02X). Result : 0x%02X\n", 
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
 								chip8->V[chip8->inst.X] | chip8->V[chip8->inst.Y]);
 						break;
 					case 2:
-						printf("Set register v%X (0x%02X) &= V%X (0x%02X). Result : 0x%02X\n", 
+						printf("Set register V%X (0x%02X) &= V%X (0x%02X). Result : 0x%02X\n", 
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
 								chip8->V[chip8->inst.X] & chip8->V[chip8->inst.Y]);
 						break;
 					case 3:
-						printf("Set register v%X (0x%02X) ^= V%X (0x%02X). Result : 0x%02X\n", 
+						printf("Set register V%X (0x%02X) ^= V%X (0x%02X). Result : 0x%02X\n", 
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
 								chip8->V[chip8->inst.X] ^ chip8->V[chip8->inst.Y]);
 						break;
 					case 4:
-						printf("Set register v%X (0x%02X) += V%X (0x%02X), VF = 1 if carry. Result : 0x%02X, VF = %X\n", 
+						printf("Set register V%X (0x%02X) += V%X (0x%02X), VF = 1 if carry. Result : 0x%02X, VF = %X\n", 
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
 								chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y],
 								((uint16_t)(chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y]) > 255));
 						break;
 					case 5:
-						printf("Set register v%X (0x%02X) -= V%X (0x%02X), VF = 1 if no borrow. Result : 0x%02X, VF = %X\n", 
+						printf("Set register V%X (0x%02X) -= V%X (0x%02X), VF = 1 if no borrow. Result : 0x%02X, VF = %X\n", 
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->inst.Y, chip8->V[chip8->inst.Y],
 								chip8->V[chip8->inst.X] - chip8->V[chip8->inst.Y],
 								(chip8->V[chip8->inst.Y] <= chip8->V[chip8->inst.X]));
 						break;
 					case 6:
-						printf("Set register v%X (0x%02X) >>= 1, VF = shifted off bit (%X). Result : 0x%02X, VF = %X\n", 
+						printf("Set register V%X (0x%02X) >>= 1, VF = shifted off bit (%X). Result : 0x%02X, VF = %X\n", 
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->V[chip8->inst.X] & 1,
 								chip8->V[chip8->inst.X] >> 1);
 						break;
 					case 7:
-						printf("Set register v%X = V%X (0x%02X) - V%X (0x%02X), VF = 1 if no borrow. Result : 0x%02X, VF = %X\n", 
+						printf("Set register V%X = V%X (0x%02X) - V%X (0x%02X), VF = 1 if no borrow. Result : 0x%02X, VF = %X\n", 
 								chip8->inst.X, chip8->inst.Y, chip8->V[chip8->inst.Y], 
 								chip8->inst.X, chip8->V[chip8->inst.X],
 								chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X],
 								(chip8->V[chip8->inst.X] <= chip8->V[chip8->inst.Y]));
 						break;
 					case 0xE:
-						printf("Set register v%X (0x%02X) <<= 1, VF = shifted off bit (%X). Result : 0x%02X, VF = %X\n", 
+						printf("Set register V%X (0x%02X) <<= 1, VF = shifted off bit (%X). Result : 0x%02X, VF = %X\n", 
 								chip8->inst.X, chip8->V[chip8->inst.X], (chip8->V[chip8->inst.X] & 0x80) >> 7,
 								chip8->V[chip8->inst.X] << 1);
 						break;
@@ -502,6 +563,7 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 	chip8->inst.NNN = chip8->inst.opcode & 0x0FFF;
 	chip8->inst.NN = chip8->inst.opcode & 0x0FF;
 	chip8->inst.N = chip8->inst.opcode & 0x0F;
+	chip8->inst.N2 = chip8->inst.opcode & 0x00F0;
 	chip8->inst.X = (chip8->inst.opcode >> 8) & 0x0F;
 	chip8->inst.Y = (chip8->inst.opcode >> 4) & 0x0F;
 
@@ -515,6 +577,20 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 				memset(&chip8->display[0], false, sizeof chip8->display);
 			} else if(chip8->inst.NN == 0xEE){
 				chip8->PC = *--chip8->stack_ptr;
+			} else if(chip8->inst.N2 == 0x0C0){
+				for(int loop = 0; loop < 8192; loop++){
+					chip8->Destination[loop] = 0;
+				}
+				for(unsigned col = 0; col < config.window_width; col++){
+					for(unsigned row = 0; row < (config.window_height - chip8->inst.N); row++){
+						int source = col + (row * config.window_width);
+						int dest = col + ((row + chip8->inst.N) * config.window_width);
+						chip8->Destination[dest] = chip8->display[source];
+					}
+				}
+				for(int i = 0; i < 8192; i++){
+					chip8->display[i] = chip8->Destination[i];
+				}
 			}
 			break;
 		case 0x01:
@@ -560,11 +636,12 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 				case 3:
 					chip8->V[chip8->inst.X] ^= chip8->V[chip8->inst.Y];
 					break;
-				case 4:
-					if((uint16_t)(chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y]) > 255)
-						chip8->V[0xF] = 1;
+				case 4:{
+					const bool carry = ((uint16_t)(chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y]) > 255);
 					chip8->V[chip8->inst.X] += chip8->V[chip8->inst.Y];
+					chip8->V[0xF] = carry;
 					break;
+				}
 				case 5:
 					chip8->V[0xF] = (chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y]);
 					chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
@@ -711,11 +788,11 @@ int main(int argc, char **argv){
 	// Initialize CHIP8 machine
 	chip8_t chip8 = {0};
 	const char *rom_name = argv[1];
-	if(!init_chip8(&chip8, rom_name)) exit(EXIT_FAILURE);
+	if(!init_chip8(&chip8, config, rom_name)) exit(EXIT_FAILURE);
 
 	// Main loop
 	while (chip8.state != QUIT){
-		handle_input(&chip8);
+		handle_input(&chip8, &config);
 		if(chip8.state == PAUSED) continue;
 
 		const uint64_t start_frame_time = SDL_GetPerformanceCounter();
