@@ -399,6 +399,10 @@ void handle_input(chip8_t *chip8, config_t *config){
 					printf("Return from subroutine to adress 0x%04X\n", *(chip8->stack_ptr - 1));
 				} else if(chip8->inst.N2 == 0x0C0){
 					printf("Scroll down the whole screen of %u \n", chip8->inst.N);
+				} else if(chip8->inst.NN == 0xFB) {
+					printf("Scroll right the whole screen of 4px \n");
+				} else if(chip8->inst.NN == 0xFC) {
+					printf("Scroll left the whole screen of 4px \n");
 				} else {
 					printf("Unimplemented Opcode.\n");
 				}
@@ -585,6 +589,34 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					for(unsigned row = 0; row < (config.window_height - chip8->inst.N); row++){
 						int source = col + (row * config.window_width);
 						int dest = col + ((row + chip8->inst.N) * config.window_width);
+						chip8->Destination[dest] = chip8->display[source];
+					}
+				}
+				for(int i = 0; i < 8192; i++){
+					chip8->display[i] = chip8->Destination[i];
+				}
+			} else if(chip8->inst.NN == 0xFB){
+				for(int loop = 0; loop < 8192; loop++){
+					chip8->Destination[loop] = 0;
+				}
+				for(unsigned col = 0; col < config.window_width - 4; col++){
+					for(unsigned row = 0; row < (config.window_height); row++){
+						int source = col + (row * config.window_width);
+						int dest = (col + 4) + (row * config.window_width);
+						chip8->Destination[dest] = chip8->display[source];
+					}
+				}
+				for(int i = 0; i < 8192; i++){
+					chip8->display[i] = chip8->Destination[i];
+				}
+			} else if (chip8->inst.NN == 0xFC){
+				for(int loop = 0; loop < 8192; loop++){
+					chip8->Destination[loop] = 0;
+				}
+				for(unsigned col = 0; col < config.window_width; col++){
+					for(unsigned row = 0; row < (config.window_height); row++){
+						int source = col + (row * config.window_width);
+						int dest = (col - 4) + (row * config.window_width);
 						chip8->Destination[dest] = chip8->display[source];
 					}
 				}

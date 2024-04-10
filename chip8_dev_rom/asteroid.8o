@@ -15,10 +15,11 @@
 	vf := 6
 	delay := vf
 	
- scroll-down 4
+ 	scroll-down 4
 	vf := random 63
 	i := rock
 	sprite vf v2 5
+	if v5 key then A
 	if v3 key then v0 -= 3
 	if v4 key then v0 += 3
 	i := ship
@@ -34,7 +35,22 @@
 	0
 	:byte OCTO_KEY_Q
 	:byte OCTO_KEY_E
+	:byte OCTO_KEY_W
 	
 : ship 0x20 0x70 0xF8
 : rock 0x70 0xD8 0xE8 0xB8 0x70
-	
+
+:macro sample { :calc t { 6 + HERE } i := t note ; }
+: A sample 0xFF 0x00 0xFF 0x00 0xFF 0x00 0xFF 0x00 0xFF 0x00 0xFF 0x00 0xFF 0x00 0xFF 0x00
+
+: note
+	audio
+	vf := 6
+	delay := vf
+	vf := 10 
+	buzzer := vf
+	loop
+		vf := delay
+		if vf != 0 then
+	again
+;
