@@ -17,6 +17,7 @@ typedef struct {
 typedef struct {
 	uint32_t window_width;
 	uint32_t window_height;
+	bool super_mode;
 	uint32_t fg_color;
 	uint32_t bg_color;
 	uint32_t scale_factor;
@@ -46,7 +47,7 @@ typedef struct {
 
 typedef struct {
 	emulator_state_t state;
-	uint8_t ram[4096];
+	uint8_t ram[4096];  // 32768 for SCHIP
 	bool display[64*32];
 	char Destination[8192];
 	uint32_t pixel_color[64*32];
@@ -145,6 +146,7 @@ bool set_config_from_args(config_t *config, const int argc, char **argv){
 	*config = (config_t){
 		.window_width = 64,
 		.window_height = 32,
+		.super_mode = false,
 		.fg_color = 0xFFFFFFFF,
 		.bg_color = 0x00000000,
 		.scale_factor = 20,
@@ -403,6 +405,12 @@ void handle_input(chip8_t *chip8, config_t *config){
 					printf("Scroll right the whole screen of 4px \n");
 				} else if(chip8->inst.NN == 0xFC) {
 					printf("Scroll left the whole screen of 4px \n");
+				} else if(chip8->inst.NN == 0xFE) {
+					printf("Disable high resolution graphics mode and return to 64x32 \n");
+				} else if(chip8->inst.NN == 0xFF) {
+					printf("Enable 128x64 high resolution graphics mode \n");
+				} else if(chip8->inst.NN == 0xFD) {
+					printf("Exit the Chip8/SuperChip interpreter \n");
 				} else {
 					printf("Unimplemented Opcode.\n");
 				}
@@ -537,6 +545,9 @@ void handle_input(chip8_t *chip8, config_t *config){
 						printf("Set I to sprite location in memory for character in V%X (0x%02X). Result(VX*5) = (0x%02X)\n",
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->V[chip8->inst.X] * 5);
 						break;
+					case 0x30:
+						printf("Point I to 10-byte font sprite for digit V%X (only digits 0-9)", chip8->inst.X);
+						break;
 					case 0x33:
 						printf("Store BCD representation of V%X (0x%02X) at memory form I (0x%04X)\n",
 								chip8->inst.X, chip8->V[chip8->inst.X], chip8->I);
@@ -560,7 +571,7 @@ void handle_input(chip8_t *chip8, config_t *config){
 	}
 #endif
 
-void emulate_instruction(chip8_t *chip8, const config_t config){
+void emulate_instruction(chip8_t *chip8, config_t config){
 	chip8->inst.opcode = (chip8->ram[chip8->PC] << 8) | chip8->ram[chip8->PC+1];
 	chip8->PC += 2;
 
@@ -623,6 +634,16 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 				for(int i = 0; i < 8192; i++){
 					chip8->display[i] = chip8->Destination[i];
 				}
+			} else if(chip8->inst.NN == 0xFE){
+				config.super_mode = false;
+				config.window_height = 32;
+				config.window_width = 64;
+			} else if(chip8->inst.NN == 0xFF){
+				config.super_mode = true;
+				config.window_height = 64;
+				config.window_width = 128;
+			} else if(chip8->inst.NN == 0xFD){
+				exit(EXIT_SUCCESS);
 			}
 			break;
 		case 0x01:
@@ -713,21 +734,61 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 			const uint8_t orig_X = X_coord;
 
 			chip8->V[0xF] = 0;
-			for(uint8_t i = 0; i < chip8->inst.N; i++){
-				const uint8_t sprite_data = chip8->ram[chip8->I + i];
-				X_coord = orig_X;
+			if(config.super_mode == false){
+				for(uint8_t i = 0; i < chip8->inst.N; i++){
+					const uint8_t sprite_data = chip8->ram[chip8->I + i];
+					X_coord = orig_X;
 				
-				for(int8_t j = 7; j >= 0; j--){
-					bool *pixel = &chip8->display[Y_coord * config.window_width + X_coord];
-					const bool sprite_bit = (sprite_data & (1 << j));
-					if(sprite_bit && *pixel){
-						chip8->V[0xF] = 1;
-					}
-					*pixel ^= sprite_bit;
+					for(int8_t j = 7; j >= 0; j--){
+						bool *pixel = &chip8->display[Y_coord * config.window_width + X_coord];
+						const bool sprite_bit = (sprite_data & (1 << j));
+						if(sprite_bit && *pixel){
+							chip8->V[0xF] = 1;
+						}
+						*pixel ^= sprite_bit;
 
-					if(++X_coord >= config.window_width) break;
+						if(++X_coord >= config.window_width) break;
+					}
+					if(++Y_coord >= config.window_height) break;
 				}
-				if(++Y_coord >= config.window_height) break;
+			} else { 
+				if(chip8->inst.N == 0){
+					int offset = 0;
+					for(uint8_t i = 0; i < 16; i++){
+						const uint8_t sprite_data = (chip8->ram[chip8->I + offset] * 256) + (chip8->ram[chip8->I + (offset + 1)]);
+						offset += 2;
+						X_coord = orig_X;
+				
+						for(int8_t j = 0; j <16; j++){
+							bool *pixel = &chip8->display[Y_coord * config.window_width + X_coord];
+							const bool sprite_bit = (sprite_data & (0x8000 >> j));
+							if(sprite_bit && *pixel){
+								chip8->V[0xF] = 1;
+							}
+							*pixel ^= sprite_bit;
+
+							if(++X_coord >= config.window_width) break;
+						}
+						if(++Y_coord >= config.window_height) break;
+					}
+				} else {
+					for(uint8_t i = 0; i < chip8->inst.N; i++){
+					const uint8_t sprite_data = chip8->ram[chip8->I + i];
+					X_coord = orig_X;
+				
+					for(int8_t j = 7; j >= 0; j--){
+						bool *pixel = &chip8->display[Y_coord * config.window_width + X_coord];
+						const bool sprite_bit = (sprite_data & (1 << j));
+						if(sprite_bit && *pixel){
+							chip8->V[0xF] = 1;
+						}
+						*pixel ^= sprite_bit;
+
+						if(++X_coord >= config.window_width) break;
+					}
+					if(++Y_coord >= config.window_height) break;
+				}
+				}
 			}
 			break;
 		}
@@ -769,6 +830,9 @@ void emulate_instruction(chip8_t *chip8, const config_t config){
 					break;
 				case 0x29:
 					chip8->I = chip8->V[chip8->inst.X] * 5;
+					break;
+				case 0x30:
+					chip8->I = 80 + (chip8->V[chip8->inst.X * 10]);
 					break;
 				case 0x33: {
 					uint8_t bcd = chip8->V[chip8->inst.X];
