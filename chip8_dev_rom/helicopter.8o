@@ -1,0 +1,195 @@
+:alias pos_x v7
+:alias pos_y v8
+:alias player_dir v9
+:alias collide va
+:alias score vb
+:alias player_key vc
+:alias player_frame vd
+:alias high_score ve
+
+:const SPEED 2
+:const BUTTON 6
+
+: sync
+	loop
+		vf := delay
+		if vf != 0 then
+	again
+	vf := 2
+	delay := vf
+;
+
+: draw-fence
+	i := fence
+	v0 := 44
+	v1 := 4
+	loop
+		sprite v0 v1 5
+		v0 += 7
+		if v0 != 86 then
+	again
+;
+	
+: draw-player
+	i := player-l
+	if player_dir == SPEED then i := player-r
+	collide := 0
+	sprite pos_x pos_y 8
+	collide |= vf
+	i := blade-l
+	if player_dir == SPEED then i := blade-r
+	v0 := pos_y
+	v0 -= 2
+	sprite pos_x v0 5
+	collide |= vf
+;
+
+: wait-key
+	v0 := pos_x
+	v0 -= 4
+	v1 := pos_y
+	v1 -= 12
+	i := bubble
+	sprite v0 v1 9
+	vf := BUTTON
+	loop
+		if vf -key then
+	again
+	sprite v0 v1 9
+;
+
+: wait-release
+	if v0 key then return
+	player_key := 0
+;
+
+: move-up
+	pos_y -= 1
+	v0 := 31
+	v0 &= pos_y
+	if v0 == 0 then score += 1
+;
+
+: switch-dir
+	v0 := BUTTON
+	if player_key != 0 then jump wait-release
+	if v0 -key then return
+	player_key := 1
+	
+	v0 := 0xFF
+	player_dir ^= v0
+	player_dir += 1
+;
+
+: move-player
+	v0 := 1
+	player_frame ^= v0
+	move-up
+	v0 := random 1
+	if v0 == 1 then move-up
+	pos_x += player_dir
+	switch-dir
+;
+
+: get-score
+	i := score-digits
+	bcd score
+	load v2
+	i  := hex v0
+	v0 := 24
+	v3 :=  10
+	sprite v0 v3 5
+	i  := hex v1
+	v0 += 5
+	sprite v0 v3 5
+	i  := hex v2
+	v0 += 5
+	sprite v0 v3 5
+;
+
+: get-high-score
+	i := score-digits
+	bcd high_score
+	load v2
+	i  := hex v0
+	v0 := 24
+	v3 :=  20
+	sprite v0 v3 5
+	i  := hex v1
+	v0 += 5
+	sprite v0 v3 5
+	i  := hex v2
+	v0 += 5
+	sprite v0 v3 5
+;
+: game-over
+	vf := 16
+	buzzer := vf
+	delay := vf
+	loop
+		draw-player
+		scroll-left
+		draw-player
+		draw-player
+		scroll-right
+		draw-player
+		draw-player
+		scroll-right
+		draw-player
+		draw-player
+		scroll-left
+		draw-player
+		vf := delay
+		if vf != 0 then
+	again
+	
+: show-score
+	clear
+	if high_score < score then high_score := score
+	get-score
+	get-high-score
+	vf := BUTTON
+	loop
+		if vf -key then
+	again
+	clear
+	
+: main
+	clear
+	pos_x := 28
+	pos_y := 24
+	player_dir := SPEED
+	player_key := 0
+	score := 0
+	
+	draw-fence
+	draw-player
+	wait-key
+	
+	loop
+		draw-player
+		move-player
+		draw-player
+		if collide != 0 then jump game-over
+		sync
+	again
+	
+: player-l
+	0x3C 0x42 0xA9 0x81 0x42 0x3C 0x24 0x24 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+	
+: player-r
+	0x3C 0x42 0x95 0x81 0x42 0x3C 0x24 0x24 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+
+: blade-r
+	0x7C 0x10 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+	
+: blade-l
+	0x3E 0x08 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+	
+: fence
+	0x70 0xE8 0xB8 0xF8 0x70
+	
+: bubble
+	0x7E 0xE3 0xEF 0xE7 0xEF 0xE3 0x7F 0x03 0x01 0x00 0x00 0x00 0x00 0x00 0x00
+	
+: score-digits 0 0 0

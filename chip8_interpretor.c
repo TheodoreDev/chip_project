@@ -751,7 +751,7 @@ void emulate_instruction(chip8_t *chip8, config_t config){
 					}
 					if(++Y_coord >= config.window_height) break;
 				}
-			} else { 
+			} else if(config.super_mode == true){ 
 				if(chip8->inst.N == 0){
 					int offset = 0;
 					for(uint8_t i = 0; i < 16; i++){
@@ -776,18 +776,18 @@ void emulate_instruction(chip8_t *chip8, config_t config){
 					const uint8_t sprite_data = chip8->ram[chip8->I + i];
 					X_coord = orig_X;
 				
-					for(int8_t j = 7; j >= 0; j--){
-						bool *pixel = &chip8->display[Y_coord * config.window_width + X_coord];
-						const bool sprite_bit = (sprite_data & (1 << j));
-						if(sprite_bit && *pixel){
-							chip8->V[0xF] = 1;
-						}
-						*pixel ^= sprite_bit;
+						for(int8_t j = 7; j >= 0; j--){
+							bool *pixel = &chip8->display[Y_coord * config.window_width + X_coord];
+							const bool sprite_bit = (sprite_data & (1 << j));
+							if(sprite_bit && *pixel){
+								chip8->V[0xF] = 1;
+							}
+							*pixel ^= sprite_bit;
 
-						if(++X_coord >= config.window_width) break;
+							if(++X_coord >= config.window_width) break;
+						}
+						if(++Y_coord >= config.window_height) break;
 					}
-					if(++Y_coord >= config.window_height) break;
-				}
 				}
 			}
 			break;
