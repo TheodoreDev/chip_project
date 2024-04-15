@@ -362,5 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
+SDL2-2.30.1
 chip8.exe
 start_emulator.bat
