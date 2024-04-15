@@ -572,6 +572,7 @@ void handle_input(chip8_t *chip8, config_t *config){
 #endif
 
 void emulate_instruction(chip8_t *chip8, config_t config){
+	bool carry;
 	chip8->inst.opcode = (chip8->ram[chip8->PC] << 8) | chip8->ram[chip8->PC+1];
 	chip8->PC += 2;
 
@@ -696,16 +697,18 @@ void emulate_instruction(chip8_t *chip8, config_t config){
 					break;
 				}
 				case 5:
-					chip8->V[0xF] = (chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y]);
+					carry = (chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y]);
 					chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
+					chip8->V[0xF] = carry;
 					break;
 				case 6:
 					chip8->V[0xF] = chip8->V[chip8->inst.X] & 1;
 					chip8->V[chip8->inst.X] >>= 1;
 					break;
 				case 7:
-					chip8->V[0xF] = (chip8->V[chip8->inst.X] <= chip8->V[chip8->inst.Y]);
+					carry = (chip8->V[chip8->inst.X] <= chip8->V[chip8->inst.Y]);
 					chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X];
+					chip8->V[0xF] = carry;
 					break;
 				case 0xE:
 					chip8->V[0xF] = (chip8->V[chip8->inst.X] & 0x80) >> 7;

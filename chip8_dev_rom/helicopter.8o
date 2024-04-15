@@ -10,6 +10,8 @@
 :const SPEED 2
 :const BUTTON 6
 
+high_score := 0
+
 : sync
 	loop
 		vf := delay
@@ -91,37 +93,6 @@
 	switch-dir
 ;
 
-: get-score
-	i := score-digits
-	bcd score
-	load v2
-	i  := hex v0
-	v0 := 24
-	v3 :=  10
-	sprite v0 v3 5
-	i  := hex v1
-	v0 += 5
-	sprite v0 v3 5
-	i  := hex v2
-	v0 += 5
-	sprite v0 v3 5
-;
-
-: get-high-score
-	i := score-digits
-	bcd high_score
-	load v2
-	i  := hex v0
-	v0 := 24
-	v3 :=  20
-	sprite v0 v3 5
-	i  := hex v1
-	v0 += 5
-	sprite v0 v3 5
-	i  := hex v2
-	v0 += 5
-	sprite v0 v3 5
-;
 : game-over
 	vf := 16
 	buzzer := vf
@@ -143,11 +114,27 @@
 		if vf != 0 then
 	again
 	
+:macro score_or_high reg x y {
+	i := score-digits
+	bcd reg
+	load v2
+	i  := hex v0
+	v0 := x
+	v3 :=  y
+	sprite v0 v3 5
+	i  := hex v1
+	v0 += 5
+	sprite v0 v3 5
+	i  := hex v2
+	v0 += 5
+	sprite v0 v3 5
+}
+
 : show-score
 	clear
 	if high_score < score then high_score := score
-	get-score
-	get-high-score
+	score_or_high score 24 10
+	score_or_high high_score 24 20
 	vf := BUTTON
 	loop
 		if vf -key then
